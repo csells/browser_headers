@@ -1,17 +1,16 @@
 name: browser_headers
-description: A starting point for Dart libraries or applications.
-version: 1.0.0
-# repository: https://github.com/my_org/my_repo
+description: Generates randomized but response-stable "browser-like" headers.
+version: 0.1.0
+repository: https://github.com/csells/browser_headers
+homepage: https://github.com/csells/browser_headers
 
 environment:
   sdk: ^3.9.2
 
-# Add regular dependencies here.
 dependencies:
-  random_user_agents: ^1.0.17
   http: ^1.5.0
-  # path: ^1.9.0
+  random_user_agents: ^1.0.17
 
 dev_dependencies:
-  lints: ^6.0.0
+  all_lint_rules_community: ^0.0.43
   test: ^1.25.6

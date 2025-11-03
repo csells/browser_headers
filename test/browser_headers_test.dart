@@ -21,6 +21,13 @@ void main() {
     'https://search.yahoo.com/',
   };
 
+  const plausibleSearchEngineHosts = {
+    'www.google.com',
+    'www.bing.com',
+    'duckduckgo.com',
+    'search.yahoo.com',
+  };
+
   final allowedKeys = <String>{
     ...coreKeys,
     ...encodingGroup,
@@ -87,7 +94,8 @@ void main() {
           present.isEmpty || present.length == fetchGroup.length,
           isTrue,
           reason:
-              'Sec-Fetch* + (Cache-Control, Upgrade-Insecure-Requests) must appear together or not at all',
+              'Sec-Fetch* + (Cache-Control, Upgrade-Insecure-Requests) '
+              'must appear together or not at all',
         );
       }
     });
@@ -126,21 +134,19 @@ void main() {
       expect(h['Accept']!.trim(), isNotEmpty);
     });
 
-    test(
-      'baseHeaders can reduce output to only the needed keys while keeping core invariants',
-      () {
-        // Provide only UA; generator still supplies Accept + Accept-Language.
-        final base = {'User-Agent': 'MinimalUA/2.0'};
-        final h = BrowserHeaders.generate(baseHeaders: base);
+    test('baseHeaders can reduce output to only the needed keys '
+        'while keeping core invariants', () {
+      // Provide only UA; generator still supplies Accept + Accept-Language.
+      final base = {'User-Agent': 'MinimalUA/2.0'};
+      final h = BrowserHeaders.generate(baseHeaders: base);
 
-        expect(h['User-Agent'], equals('MinimalUA/2.0'));
-        expect(h.keys, containsAll(coreKeys));
-        // Ensure no unexpected keys are introduced beyond allowed keys.
-        for (final k in h.keys) {
-          expect(allowedKeys.contains(k), isTrue);
-        }
-      },
-    );
+      expect(h['User-Agent'], equals('MinimalUA/2.0'));
+      expect(h.keys, containsAll(coreKeys));
+      // Ensure no unexpected keys are introduced beyond allowed keys.
+      for (final k in h.keys) {
+        expect(allowedKeys.contains(k), isTrue);
+      }
+    });
 
     test('multiple runs produce variation but remain valid', () {
       final sample = <Map<String, String>>[];
@@ -168,6 +174,117 @@ void main() {
         final present = fetchGroup.where(h.containsKey).toSet();
         expect(present.isEmpty || present.length == fetchGroup.length, isTrue);
       }
+    });
+
+    test('refererQuery generates search URLs with encoded query', () {
+      for (var i = 0; i < 100; i++) {
+        final h = BrowserHeaders.generate(refererQuery: 'test query');
+        if (h.containsKey(refererKey)) {
+          final referer = h[refererKey]!;
+          final uri = Uri.parse(referer);
+
+          // Should be one of the known search engines
+          expect(
+            plausibleSearchEngineHosts.contains(uri.host),
+            isTrue,
+            reason: 'Unknown host in referer: ${uri.host}',
+          );
+
+          // Should have a query parameter with the search term
+          expect(uri.hasQuery, isTrue);
+
+          // Check for appropriate query parameter based on host
+          if (uri.host == 'search.yahoo.com') {
+            expect(uri.queryParameters.containsKey('p'), isTrue);
+            expect(uri.queryParameters['p'], 'test query');
+          } else {
+            expect(uri.queryParameters.containsKey('q'), isTrue);
+            expect(uri.queryParameters['q'], 'test query');
+          }
+        }
+      }
+    });
+
+    test('refererQuery properly URL encodes special characters', () {
+      const specialQuery = 'zillow 11222 Dilling St, Studio City & more!';
+      for (var i = 0; i < 100; i++) {
+        final h = BrowserHeaders.generate(refererQuery: specialQuery);
+        if (h.containsKey(refererKey)) {
+          final referer = h[refererKey]!;
+          final uri = Uri.parse(referer);
+
+          // Should parse without errors
+          expect(uri.scheme, 'https');
+
+          // Query should be properly decoded back to original
+          final queryParam =
+              uri.queryParameters['q'] ?? uri.queryParameters['p'];
+          expect(queryParam, specialQuery);
+
+          // Raw query should contain URL encoding (spaces as %20 or +)
+          expect(
+            uri.query.contains('%') || uri.query.contains('+'),
+            isTrue,
+            reason: 'Query should be URL encoded',
+          );
+        }
+      }
+    });
+
+    test('refererQuery null or empty uses default referrers', () {
+      // Test with null
+      for (var i = 0; i < 50; i++) {
+        final h = BrowserHeaders.generate(refererQuery: null);
+        if (h.containsKey(refererKey)) {
+          final referer = h[refererKey]!;
+          expect(
+            plausibleReferers.contains(referer),
+            isTrue,
+            reason: 'Should use default referrers when query is null',
+          );
+        }
+      }
+
+      // Test with empty string
+      for (var i = 0; i < 50; i++) {
+        final h = BrowserHeaders.generate(refererQuery: '');
+        if (h.containsKey(refererKey)) {
+          final referer = h[refererKey]!;
+          expect(
+            plausibleReferers.contains(referer),
+            isTrue,
+            reason: 'Should use default referrers when query is empty',
+          );
+        }
+      }
+    });
+
+    test('refererQuery generates different search engine URLs', () {
+      final referers = <String>{};
+      for (var i = 0; i < 200; i++) {
+        final h = BrowserHeaders.generate(refererQuery: 'test');
+        if (h.containsKey(refererKey)) {
+          referers.add(h[refererKey]!);
+        }
+      }
+
+      // Should have generated URLs from multiple search engines
+      expect(
+        referers.length,
+        greaterThan(1),
+        reason: 'Should generate URLs from different search engines',
+      );
+    });
+
+    test('refererQuery with baseHeaders override', () {
+      const customReferer = 'https://example.com/custom';
+      final h = BrowserHeaders.generate(
+        refererQuery: 'test query',
+        baseHeaders: {'Referer': customReferer},
+      );
+
+      // baseHeaders should override the generated referer
+      expect(h['Referer'], customReferer);
     });
   });
 }
